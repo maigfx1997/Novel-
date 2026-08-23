@@ -20,6 +20,16 @@ def clean_text(text):
     cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
     return cleaned.strip()
 
+def fetch_image(url):
+    """دالة لجلب صور الغلاف والفقرات وتحويلها لبيانات متوافقة مع EPUB"""
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            return res.content
+    except Exception:
+        pass
+    return None
+
 def scrape_full_novel(url):
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
@@ -27,16 +37,39 @@ def scrape_full_novel(url):
         
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    # استخراج عنوان الرواية الأساسي بوضوح
-    title_tag = soup.find('h1', class_=lambda x: x and ('title' in x or 'story' in x)) or soup.find('h1') or soup.find('title')
+    # 1. استخراج العنوان والوصف وصورة الغلاف
+    title_tag = soup.find('h1') or soup.find('title')
     title = clean_text(title_tag.text) if title_tag else "رواية_مترجمة"
-    # تنظيف العنوان لو احتوى على زوائد
     title = title.split('|')[0].split('-')[0].strip() or "رواية_مترجمة"
     
+    # الوصف
+    desc_tag = soup.find('div', class_=lambda x: x and ('description' in x or 'summary' in x or 'abstract' in x)) or soup.find('meta', attrs={'name': 'description'})
+    description = ""
+    if desc_tag:
+        description = clean_text(desc_tag.get('content', '') if desc_tag.name == 'meta' else desc_tag.text)
+        
+    # الغلاف
+    cover_bytes = None
+    cover_img_tag = soup.find('meta', property='og:image') or soup.find('img', class_=lambda x: x and ('cover' in x or 'poster' in x))
+    if cover_img_tag:
+        cover_url = cover_img_tag.get('content') if cover_img_tag.name == 'meta' else cover_img_tag.get('src')
+        if cover_url:
+            cover_url = cover_url if cover_url.startswith('http') else requests.compat.urljoin(url, cover_url)
+            cover_bytes = fetch_image(cover_url)
+
+    # 2. استخراج الفصول مع ترتيبها الصحيح
     chapters_data = []
     seen_links = set()
     
-    for a in soup.find_all('a', href=True):
+    # فلترة مخصصة للروابط
+    links = soup.find_all('a', href=True)
+    
+    # إصلاح خربطة Wattpad عبر ترتيب روابط القائمة حسب ظهورها في شجرة الـ DOM
+    if 'wattpad.com' in url:
+        story_parts = soup.find_all('a', class_=lambda x: x and 'story-parts' in x) or links
+        links = story_parts
+
+    for a in links:
         href = a['href']
         text = clean_text(a.get_text())
         
@@ -45,11 +78,11 @@ def scrape_full_novel(url):
             if full_link not in seen_links and full_link != url:
                 seen_links.add(full_link)
                 chapters_data.append((text or f"فصل", full_link))
-                
+
     if not chapters_data:
         paragraphs = soup.find_all('p')
         content = "\n\n".join([clean_text(p.get_text()) for p in paragraphs if len(p.get_text().strip()) > 20])
-        return title, [(title, content)]
+        return title, description, cover_bytes, [(title, content)]
         
     fully_scraped_chapters = []
     for ch_title, ch_url in chapters_data[:50]:
@@ -70,11 +103,11 @@ def scrape_full_novel(url):
     if not fully_scraped_chapters:
         paragraphs = soup.find_all('p')
         content = "\n\n".join([clean_text(p.get_text()) for p in paragraphs if len(p.get_text().strip()) > 20])
-        return title, [(title, content)]
+        return title, description, cover_bytes, [(title, content)]
         
-    return title, fully_scraped_chapters
+    return title, description, cover_bytes, fully_scraped_chapters
 
-def generate_full_epub(title, chapters_data, output_filename):
+def generate_full_epub(title, description, cover_bytes, chapters_data, output_filename):
     book = epub.EpubBook()
     book.set_identifier('id_full_novel')
     book.set_title(title)
@@ -82,8 +115,20 @@ def generate_full_epub(title, chapters_data, output_filename):
     book.add_author('Maissa Graphics')
 
     spine_items = ['nav']
-    toc_links = []
 
+    # إضافة الغلاف إذا وُجد
+    if cover_bytes:
+        book.set_cover("cover.jpg", cover_bytes)
+        spine_items.append('cover')
+
+    # إضافة صفحة الوصف
+    if description:
+        desc_item = epub.EpubHtml(title='وصف الرواية', file_name='desc.xhtml', lang='ar')
+        desc_item.content = f'<div dir="rtl" style="font-family: Arial, sans-serif;"><h2>وصف الرواية</h2><p>{description}</p></div>'
+        book.add_item(desc_item)
+        spine_items.append(desc_item)
+
+    toc_links = []
     for idx, (ch_title, ch_content) in enumerate(chapters_data, start=1):
         file_name = f'chap_{idx:03d}.xhtml'
         c = epub.EpubHtml(title=ch_title, file_name=file_name, lang='ar')
@@ -124,7 +169,7 @@ def convert_novel():
 
     try:
         if any(domain in url for domain in ['wattpad.com', 'novlar', 'uranus']):
-            title, chapters_data = scrape_full_novel(url)
+            title, description, cover_bytes, chapters_data = scrape_full_novel(url)
         else:
             return jsonify({"error": "عذراً، الموقع غير مدعوم. يدعم النظام Wattpad, Novlar, Uranus"}), 400
 
@@ -132,7 +177,7 @@ def convert_novel():
             safe_title = "".join([c for c in title if c.isalnum() or c.isspace()]).strip()
             output_filename = f"{safe_title or 'novel'}_full.epub"
             
-            generate_full_epub(title, chapters_data, output_filename)
+            generate_full_epub(title, description, cover_bytes, chapters_data, output_filename)
             
             return send_file(output_filename, as_attachment=True)
         else:
@@ -143,7 +188,8 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Clean Title Novel Converter is Running!"
+    return "Cover and Meta Novel Converter Backend is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
