@@ -1,32 +1,46 @@
+def scrape_universal_metadata(url):
+    # التأكد من أن الرابط يبدأ بـ http
+    if not url.startswith('http'):
+        raise Exception("الرابط غير صحيح، يجب أن يبدأ بـ https://")
+        
+    res = requests.get(url, headers=HEADERS, timeout=10)
+    if res.status_code != 200:
+        raise Exception(f"فشل الاتصال بالموقع، الرمز: {res.status_code}")
+        
+    soup = BeautifulSoup(res.content, 'html.parser')
+    
+    title = "رواية_واتباد"
+    title_tag = soup.find('meta', property='og:title') or soup.find('h1')
+    if title_tag:
+        title = clean_text(title_tag.get('content') if title_tag.get('content') else title_tag.text)
+    
+    desc = ""
+    desc_tag = soup.find('meta', property='og:description')
+    if desc_tag:
+        desc = clean_text(desc_tag.get('content'))
+    
+    cover_url = None
+    cover_tag = soup.find('meta', property='og:image')
+    if cover_tag:
+        cover_url = cover_tag.get('content')
 
-def process_single_chapter(ch_data):
-    idx, ch_title, ch_url = ch_data
-    try:
-        res = requests.get(ch_url, headers=HEADERS, timeout=10)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.content, 'html.parser')
-            
-            # البحث عن حاوية نص الفصل بدقة في واتباد والمواقع الأخرى
-            content_div = soup.find('div', class_=lambda x: x and ('part-text' in x or 'reading-content' in x or 'story-text' in x or 'entry-content' in x))
-            if not content_div:
-                content_div = soup.find('div', class_='story-content')
-            if not content_div:
-                content_div = soup
-            
-            html_parts = []
-            text_parts = []
-            
-            # استخراج الفقرات النصية الحقيقية للفصل فقط وتجنب القوائم الجانبية
-            paragraphs = content_div.find_all(['p', 'div']) if content_div else []
-            for el in paragraphs:
-                # التأكد من أن العنصر يحتوي على نص حقيقي وليس قائمة تصفح
-                if el.name == 'p' or (el.name == 'div' and len(el.get('class', [])) == 0):
-                    txt = clean_text(el.get_text())
-                    if len(txt) > 20 and not any(k in txt for k in ['Ranks', '#top', 'Completed', 'Starting date']):
-                        html_parts.append(f'<p>{txt}</p>')
-                        text_parts.append(txt)
-            
-            return idx, ch_title, "\n".join(html_parts), "\n\n".join(text_parts)
-    except:
-        pass
-    return idx, ch_title, "", ""
+    chapters_data = []
+    seen_links = set()
+    
+    # استخراج روابط الفصول الخاصة بـ واتباد أو المواقع الأخرى بدقة
+    for a in soup.find_all('a', href=True):
+        href = a.get('href', '')
+        text = clean_text(a.get_text())
+        # البحث عن روابط الفصول الفعلية وتجنب الروابط الجانبية
+        if '/story/' in href or '/chapter/' in href or '10-' in href or '20-' in href:
+            full_link = urljoin(url, href)
+            if full_link not in seen_links and full_link != url and '#' not in href:
+                seen_links.add(full_link)
+                chapters_data.append((text or f"فصل", full_link))
+                
+    # إذا لمש يتم العثور على فصول متعددة، نعتبر الصفحة الحالية هي الفصل الوحيد
+    if not chapters_data:
+        chapters_data = [(title, url)]
+        
+    return title, desc, cover_url, chapters_data[:30]
+
