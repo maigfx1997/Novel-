@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from ebooklib import epub
 import os
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -14,54 +15,62 @@ HEADERS = {
 }
 
 def scrape_full_novel(url):
-    """دالة ذكية لسحب الفهرس وكل الفصول الخاصة بالرواية"""
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
-        raise Exception(f"فشل الاتصال بالرابط، رمز الاستجابة: {response.status_code}")
+        raise Exception(f"فشل الاتصال بالرابط، الرمز: {response.status_code}")
         
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    # 1. استخراج عنوان الرواية
+    # استخراج عنوان الرواية
     title_tag = soup.find('h1') or soup.find('h2', class_='story-title') or soup.find('title')
-    title = title_tag.text.strip() if title_tag else "رواية_كاملة"
+    title = title_tag.text.strip() if title_tag else "رواية_مترجمة"
     
-    # 2. البحث عن روابط الفصول في الصفحة (فهرس الرواية)
-    chapter_links = []
-    # البحث عن الروابط التي قد تمثل فصولاً داخل صفحة الفهرس
+    chapters_data = []
+    seen_links = set()
+    
+    # استخراج روابط الفصول المتاحة في الصفحة (تتوافق مع بنية الفهارس في واتباد ونوفلار وأورانوس)
     for a in soup.find_all('a', href=True):
         href = a['href']
         text = a.get_text().strip()
-        # فلترة الروابط لتجنب الروابط الخارجية أو الإعلانية
-        if ('chapter' in href or 'part' in href or 'الفصل' in text or 'الحلقة' in text) and len(text) < 100:
+        
+        # فلترة الروابط لتشمل صفحات الفصول الخاصة بالمواقع المدعومة
+        if any(keyword in href.lower() for keyword in ['chapter', 'part', 'ch-', 'story', 'read']) or 'الفصل' in text or 'الحلقة' in text:
             full_link = href if href.startswith('http') else requests.compat.urljoin(url, href)
-            if full_link not in chapter_links:
-                chapter_links.append((text or f"فصل", full_link))
+            if full_link not in seen_links and full_link != url:
+                seen_links.add(full_link)
+                chapters_data.append((text or f"فصل", full_link))
                 
-    # إذا لم يجد روابط فهارس، فهذا يعني أن المستخدم أدخل رابط فصل واحد
-    if not chapter_links:
-        # نسحب المحتوى كفصل منفرد
+    # إذا كانت الصفحة عبارة عن فصل فردي وليست فهرساً، يتم سحب محتواها مباشرة
+    if not chapters_data:
         paragraphs = soup.find_all('p')
         content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
         return title, [(title, content)]
         
-    # 3. سحب محتوى كل فصل تم العثور عليه في الفهرس (نأخذ أول 30-50 فصل كحد أقصى لمنع تأخر السيرفر)
-    chapters_data = []
-    for ch_title, ch_url in chapter_links[:40]: 
+    # سحب محتوى كل فصل تم العثور عليه (بحد أقصى 50 فصلاً لضمان سرعة الاستجابة)
+    fully_scraped_chapters = []
+    for ch_title, ch_url in chapters_data[:50]:
         try:
             ch_res = requests.get(ch_url, headers=HEADERS)
             if ch_res.status_code == 200:
                 ch_soup = BeautifulSoup(ch_res.content, 'html.parser')
-                paragraphs = ch_soup.find_all('p')
+                
+                # البحث عن حاويات النصوص الخاصة بالمواقع الثلاثة
+                content_container = ch_soup.find('pre', class_='story-text') or ch_soup.find('div', class_='reading-content') or ch_soup.find('div', class_='chapter-inner') or ch_soup
+                
+                paragraphs = content_container.find_all(['p', 'div'])
                 ch_content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
-                if len(ch_content) > 100:
-                    chapters_data.append((ch_title, ch_content))
+                
+                if len(ch_content) > 50:
+                    fully_scraped_chapters.append((ch_title, ch_content))
         except Exception:
             continue
             
-    if not chapters_data:
-        raise Exception("عذراً، لم نتمكن من سحب محتوى الفصول تلقائياً من هذا الرابط.")
+    if not fully_scraped_chapters:
+        paragraphs = soup.find_all('p')
+        content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
+        return title, [(title, content)]
         
-    return title, chapters_data
+    return title, fully_scraped_chapters
 
 def generate_full_epub(title, chapters_data, output_filename):
     book = epub.EpubBook()
@@ -70,7 +79,6 @@ def generate_full_epub(title, chapters_data, output_filename):
     book.set_language('ar')
     book.add_author('Novel Converter')
 
-    epub_chapters = []
     spine_items = ['nav']
     toc_links = []
 
@@ -86,7 +94,6 @@ def generate_full_epub(title, chapters_data, output_filename):
         
         c.content = formatted_content
         book.add_item(c)
-        epub_chapters.append(c)
         spine_items.append(c)
         toc_links.append(epub.Link(file_name, ch_title, f'ch_{idx}'))
 
@@ -107,14 +114,18 @@ def convert_novel():
     if not data:
         return jsonify({"error": "البيانات المرسلة فارغة"}), 400
         
-    url = data.get('url', '').strip()
+    url = data.get('url', '').strip().lower()
     format_type = data.get('format')
 
     if not url:
         return jsonify({"error": "رابط الرواية مفقود"}), 400
 
     try:
-        title, chapters_data = scrape_full_novel(url)
+        # التحقق من أن الرابط ينتمي لإحدى المنصات المدعومة
+        if any(domain in url for domain in ['wattpad.com', 'novlar', 'uranus']):
+            title, chapters_data = scrape_full_novel(url)
+        else:
+            return jsonify({"error": "عذراً، الموقع غير مدعوم. يدعم النظام Wattpad, Novlar, Uranus"}), 400
 
         if format_type == 'epub':
             safe_title = "".join([c for c in title if c.isalnum() or c.isspace()]).strip()
@@ -131,8 +142,7 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Full Novel Converter Backend is Running!"
+    return "Multi-Site Full Novel Converter is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-
