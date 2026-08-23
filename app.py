@@ -16,12 +16,11 @@ app = Flask(__name__)
 CORS(app)
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.5',
-    'Referer': 'https://www.wattpad.com/'
+    'Referer': 'https://www.google.com/'
 }
-
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -69,13 +68,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <script>
         async function startConversion() {
-            const url = document.getElementById('novelUrl').value.trim();
+            let url = document.getElementById('novelUrl').value.trim();
             const format = document.getElementById('outputFormat').value;
             const statusDiv = document.getElementById('statusMessage');
 
             if (!url) {
                 alert('Please enter the novel URL first!');
                 return;
+            }
+
+            // تنظيف الرابط تلقائياً من إضافات المشاركة لتجنب مشاكل واتباد
+            if (url.includes('?')) {
+                url = url.split('?')[0];
             }
 
             statusDiv.style.display = 'block';
@@ -130,7 +134,10 @@ def scrape_universal_metadata(url):
     if not url.startswith('http'):
         raise Exception("Invalid URL, must start with https://")
         
-    res = requests.get(url, headers=HEADERS, timeout=10)
+    # تنظيف الرابط من أي إضافات
+    clean_url = url.split('?')[0]
+    
+    res = requests.get(clean_url, headers=HEADERS, timeout=15)
     if res.status_code != 200:
         raise Exception(f"Connection failed, status: {res.status_code}")
         
@@ -151,7 +158,7 @@ def scrape_universal_metadata(url):
     if cover_tag:
         cover_url = cover_tag.get('content')
     if cover_url:
-        cover_url = urljoin(url, cover_url)
+        cover_url = urljoin(clean_url, cover_url)
 
     chapters_data = []
     seen_links = set()
@@ -160,13 +167,13 @@ def scrape_universal_metadata(url):
         href = a.get('href', '')
         text = clean_text(a.get_text())
         if '/story/' in href or '/chapter/' in href or any(k in href for k in ['ch-', 'part']):
-            full_link = urljoin(url, href)
-            if full_link not in seen_links and full_link != url and '#' not in href:
+            full_link = urljoin(clean_url, href)
+            if full_link not in seen_links and full_link != clean_url and '#' not in href:
                 seen_links.add(full_link)
                 chapters_data.append((text or f"Chapter", full_link))
                 
     if not chapters_data:
-        chapters_data = [(title, url)]
+        chapters_data = [(title, clean_url)]
         
     return title, desc, cover_url, chapters_data[:30]
 
