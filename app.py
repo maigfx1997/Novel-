@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, send_file, jsonify, render_template_string
 from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
@@ -19,6 +19,99 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
 }
+
+# واجهة الموقع المدمجة والتي تحتوي على جميع الصيغ بشكل مؤكد
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محول الروايات الشامل - Maissa Graphics</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 100%; max-width: 400px; text-align: center; }
+        h1 { color: #60a5fa; margin-bottom: 5px; }
+        .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; text-align: right; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; }
+        input, select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #2563eb; border: none; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        button:hover { background: #1d4ed8; }
+        #statusMessage { margin-top: 15px; padding: 10px; border-radius: 6px; display: none; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>محول الروايات</h1>
+        <p class="subtitle">يدعم واتباد، نوفلار، أورانوس وجميع المواقع</p>
+        
+        <div class="form-group">
+            <label for="novelUrl">رابط الرواية:</label>
+            <input type="url" id="novelUrl" placeholder="أدخل الرابط الكامل هنا...">
+        </div>
+        
+        <div class="form-group">
+            <label for="outputFormat">صيغة التحميل:</label>
+            <select id="outputFormat">
+                <option value="epub">كتاب إلكتروني (EPUB)</option>
+                <option value="mobi">كتاب كيندل (MOBI)</option>
+                <option value="pdf">ملف مستندات (PDF)</option>
+                <option value="txt">ملف نصي بسيط (TXT)</option>
+                <option value="html">صفحة ويب مفردة (HTML)</option>
+            </select>
+        </div>
+        
+        <button onclick="startConversion()">بدء التحويل</button>
+        <div id="statusMessage"></div>
+    </div>
+
+    <script>
+        async function startConversion() {
+            const url = document.getElementById('novelUrl').value.trim();
+            const format = document.getElementById('outputFormat').value;
+            const statusDiv = document.getElementById('statusMessage');
+
+            if (!url) {
+                alert('الرجاء إدخال رابط الرواية أولاً!');
+                return;
+            }
+
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#3b82f6';
+            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، قد يستغرق ذلك ثواني...';
+
+            try {
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, format })
+                });
+
+                if (!response.ok) throw new Error('فشل التحويل، تأكد من صحة الرابط');
+
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = "novel_converted." + format;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                statusDiv.style.background = '#064e3b';
+                statusDiv.style.color = '#34d399';
+                statusDiv.innerText = 'تم التحميل بنجاح!';
+            } catch (error) {
+                statusDiv.style.background = '#7f1d1d';
+                statusDiv.style.color = '#fca5a5';
+                statusDiv.innerText = 'خطأ: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
+"""
 
 def clean_text(text):
     if not text: return ""
@@ -245,6 +338,10 @@ def generate_html_archive(title, desc, chapters_data, output_filename):
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(html_content)
 
+@app.route('/')
+def home():
+    return render_template_string(HTML_TEMPLATE)
+
 @app.route('/convert', methods=['POST'])
 def convert_novel():
     data = request.json
@@ -268,7 +365,6 @@ def convert_novel():
             output_filename = f"{safe_title or 'novel'}.html"
             generate_html_archive(title, desc, chapters_data, output_filename)
         elif format_type == 'mobi':
-            # تنسيق MOBI يعتمد على بنية الـ EPUB القياسية المعتمدة من أمازون
             output_filename = f"{safe_title or 'novel'}.mobi"
             generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
         else:
@@ -280,10 +376,5 @@ def convert_novel():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/')
-def home():
-    return "Universal All-Format Novel Converter with MOBI is Running!"
-
 if __name__ == '__main__':
     app.run(0.0.0.0, port=5000)
-
