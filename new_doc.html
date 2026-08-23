@@ -99,11 +99,16 @@
         </div>
 
         <div class="form-group">
-            <label for="outputFormat">صيغة التحميل:</label>
-            <select id="outputFormat">
-                <option value="epub">كتاب إلكتروني (EPUB)</option>
-                <option value="pdf">ملف بي دي إف (PDF)</option>
-            </select>
+ <div class="form-group">
+    <label for="outputFormat">صيغة التحميل:</label>
+    <select id="outputFormat">
+        <option value="epub">كتاب إلكتروني (EPUB)</option>
+        <option value="pdf">ملف مستندات (PDF)</option>
+        <option value="txt">ملف نصي بسيط (TXT)</option>
+        <option value="html">صفحة ويب مفردة (HTML)</option>
+    </select>
+</div>
+
         </div>
 
         <button onclick="startConversion()">بدء التحويل</button>
