@@ -9,6 +9,11 @@ import uuid
 from urllib.parse import urljoin
 import concurrent.futures
 
+# استيراد أدوات بناء الـ PDF الآمنة
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+
 app = Flask(__name__)
 CORS(app)
 
@@ -76,10 +81,9 @@ def scrape_universal_metadata(url):
     if not chapters_data:
         chapters_data = [(title, url)]
         
-    return title, desc, cover_url, chapters_data[:40] # يكتفي بـ 40 فصل لتسريع الأداء للقصوى
+    return title, desc, cover_url, chapters_data[:40]
 
 def process_single_chapter(ch_data):
-    """دالة مستقلة لمعالجة كل فصل على حدة بسرعات فائقة"""
     idx, ch_title, ch_url = ch_data
     try:
         res = requests.get(ch_url, headers=HEADERS, timeout=10)
@@ -130,8 +134,6 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
         spine_items.append(desc_item)
 
     toc_links = []
-    
-    # --- سر التحميل المتوازي: تنفيذ طلبات الفصول كلها في نفس الوقت ---
     indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
     scraped_results = []
     
@@ -141,8 +143,7 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
             scraped_results.append(res)
             
     for idx, ch_title, ch_html, _ in scraped_results:
-        if len(ch_html) < 20: 
-            continue
+        if len(ch_html) < 20: continue
             
         ch_soup = BeautifulSoup(ch_html, 'html.parser')
         for img in ch_soup.find_all('img'):
@@ -177,6 +178,43 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
 
     epub.write_epub(output_filename, book, {})
 
+def generate_pdf(title, desc, chapters_data, output_filename):
+    """توليد ملف PDF متوافق وخفيف"""
+    c = canvas.Canvas(output_filename, pagesize=letter)
+    width, height = letter
+    
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, title[:50])
+    
+    y = height - 90
+    c.setFont("Helvetica", 11)
+    
+    indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(process_single_chapter, indexed_chapters)
+        for _, ch_title, _, ch_text in results:
+            if len(ch_text) < 20: continue
+            
+            if y < 100:
+                c.showPage()
+                y = height - 50
+                
+            c.setFont("Helvetica-Bold", 13)
+            c.drawString(50, y, ch_title[:60])
+            y -= 25
+            
+            c.setFont("Helvetica", 10)
+            for line in ch_text.split('\n'):
+                if line.strip():
+                    if y < 50:
+                        c.showPage()
+                        y = height - 50
+                    c.drawString(50, y, line[:90])
+                    y -= 15
+            y -= 20
+            
+    c.save()
+
 def generate_txt(title, desc, chapters_data, output_filename):
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(f"عنوان الرواية: {title}\n\n")
@@ -209,6 +247,9 @@ def convert_novel():
         if format_type == 'txt':
             output_filename = f"{safe_title or 'novel'}.txt"
             generate_txt(title, desc, chapters_data, output_filename)
+        elif format_type == 'pdf':
+            output_filename = f"{safe_title or 'novel'}.pdf"
+            generate_pdf(title, desc, chapters_data, output_filename)
         else:
             output_filename = f"{safe_title or 'novel'}.epub"
             generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
@@ -220,7 +261,8 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Universal Fast Novel Converter is Running Perfectly!"
+    return "Universal Multi-Format Novel Converter is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
