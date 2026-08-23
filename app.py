@@ -21,17 +21,17 @@ HEADERS = {
 }
 
 HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محول الروايات الشامل - Maissa Graphics</title>
+    <title>Universal Novel Converter - Maissa Graphics</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 100%; max-width: 400px; text-align: center; }
         h1 { color: #60a5fa; margin-bottom: 5px; }
         .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
-        .form-group { margin-bottom: 15px; text-align: right; }
+        .form-group { margin-bottom: 15px; text-align: left; }
         label { display: block; margin-bottom: 5px; font-size: 14px; }
         input, select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: #2563eb; border: none; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
@@ -41,26 +41,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="card">
-        <h1>محول الروايات</h1>
-        <p class="subtitle">يدعم واتباد، نوفلار، أورانوس وجميع المواقع</p>
+        <h1>Novel Converter</h1>
+        <p class="subtitle">Supports Wattpad and all platforms</p>
         
         <div class="form-group">
-            <label for="novelUrl">رابط الرواية:</label>
-            <input type="url" id="novelUrl" placeholder="أدخل الرابط الكامل هنا (https://...)">
+            <label for="novelUrl">Novel URL:</label>
+            <input type="url" id="novelUrl" placeholder="https://www.wattpad.com/story/...">
         </div>
         
         <div class="form-group">
-            <label for="outputFormat">صيغة التحميل:</label>
+            <label for="outputFormat">Output Format:</label>
             <select id="outputFormat">
-                <option value="epub">كتاب إلكتروني (EPUB)</option>
-                <option value="mobi">كتاب كيندل (MOBI)</option>
-                <option value="pdf">ملف مستندات (PDF)</option>
-                <option value="txt">ملف نصي بسيط (TXT)</option>
-                <option value="html">صفحة ويب مفردة (HTML)</option>
+                <option value="epub">EPUB (E-Book)</option>
+                <option value="mobi">MOBI (Kindle)</option>
+                <option value="pdf">PDF (Document)</option>
+                <option value="txt">TXT (Text)</option>
+                <option value="html">HTML (Web)</option>
             </select>
         </div>
         
-        <button onclick="startConversion()">بدء التحويل</button>
+        <button onclick="startConversion()">Start Conversion</button>
         <div id="statusMessage"></div>
     </div>
 
@@ -71,13 +71,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const statusDiv = document.getElementById('statusMessage');
 
             if (!url) {
-                alert('الرجاء إدخال رابط الرواية أولاً!');
+                alert('Please enter the novel URL first!');
                 return;
             }
 
             statusDiv.style.display = 'block';
             statusDiv.style.background = '#3b82f6';
-            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، يرجى الانتظار...';
+            statusDiv.innerText = 'Scraping chapters and generating file, please wait...';
 
             try {
                 const response = await fetch('/convert', {
@@ -86,7 +86,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     body: JSON.stringify({ url, format })
                 });
 
-                if (!response.ok) throw new Error('فشل التحويل، تأكد من صحة الرابط');
+                if (!response.ok) throw new Error('Conversion failed, check the URL');
 
                 const blob = await response.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
@@ -99,11 +99,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 statusDiv.style.background = '#064e3b';
                 statusDiv.style.color = '#34d399';
-                statusDiv.innerText = 'تم التحميل بنجاح!';
+                statusDiv.innerText = 'Downloaded successfully!';
             } catch (error) {
                 statusDiv.style.background = '#7f1d1d';
                 statusDiv.style.color = '#fca5a5';
-                statusDiv.innerText = 'خطأ: ' + error.message;
+                statusDiv.innerText = 'Error: ' + error.message;
             }
         }
     </script>
@@ -125,15 +125,15 @@ def fetch_resource(url):
 
 def scrape_universal_metadata(url):
     if not url.startswith('http'):
-        raise Exception("الرابط غير صحيح، يجب أن يبدأ بـ https://")
+        raise Exception("Invalid URL, must start with https://")
         
     res = requests.get(url, headers=HEADERS, timeout=10)
     if res.status_code != 200:
-        raise Exception(f"فشل الاتصال بالموقع، الرمز: {res.status_code}")
+        raise Exception(f"Connection failed, status: {res.status_code}")
         
     soup = BeautifulSoup(res.content, 'html.parser')
     
-    title = "رواية_واتباد"
+    title = "wattpad_novel"
     title_tag = soup.find('meta', property='og:title') or soup.find('h1')
     if title_tag:
         title = clean_text(title_tag.get('content') if title_tag.get('content') else title_tag.text)
@@ -160,7 +160,7 @@ def scrape_universal_metadata(url):
             full_link = urljoin(url, href)
             if full_link not in seen_links and full_link != url and '#' not in href:
                 seen_links.add(full_link)
-                chapters_data.append((text or f"فصل", full_link))
+                chapters_data.append((text or f"Chapter", full_link))
                 
     if not chapters_data:
         chapters_data = [(title, url)]
@@ -208,8 +208,8 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
             spine_items.append('cover')
 
     if desc:
-        desc_item = epub.EpubHtml(title='وصف الرواية', file_name='desc.xhtml', lang='ar')
-        desc_item.content = f'<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">\n<head><title>وصف الرواية</title></head>\n<body><div dir="rtl"><h2>وصف الرواية</h2><p>{desc}</p></div></body>\n</html>'
+        desc_item = epub.EpubHtml(title='Description', file_name='desc.xhtml', lang='ar')
+        desc_item.content = f'<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">\n<head><title>Description</title></head>\n<body><div dir="rtl"><h2>Description</h2><p>{desc}</p></div></body>\n</html>'
         book.add_item(desc_item)
         spine_items.append(desc_item)
 
@@ -276,9 +276,9 @@ def generate_pdf(title, desc, chapters_data, output_filename):
 
 def generate_txt(title, desc, chapters_data, output_filename):
     with open(output_filename, 'w', encoding='utf-8') as f:
-        f.write(f"عنوان الرواية: {title}\n\n")
+        f.write(f"Title: {title}\n\n")
         if desc:
-            f.write(f"الوصف:\n{desc}\n\n")
+            f.write(f"Description:\n{desc}\n\n")
         f.write("="*50 + "\n\n")
         
         indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
@@ -300,7 +300,7 @@ def generate_html_archive(title, desc, chapters_data, output_filename):
     <h1>{title}</h1>
     """
     if desc:
-        html_content += f"<div class='chapter'><h2>وصف الرواية</h2><p>{desc}</p></div>"
+        html_content += f"<div class='chapter'><h2>Description</h2><p>{desc}</p></div>"
         
     indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
@@ -321,7 +321,7 @@ def home():
 def convert_novel():
     data = request.json
     if not data or not data.get('url'):
-        return jsonify({"error": "البيانات أو الرابط مفقود"}), 400
+        return jsonify({"error": "Data or URL is missing"}), 400
         
     url = data.get('url').strip()
     format_type = data.get('format', 'epub').lower()
@@ -354,6 +354,7 @@ def convert_novel():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
