@@ -3,185 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محول الروايات | EPUB & PDF</title>
+    <title>محول الروايات الشامل - Maissa Graphics</title>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --primary: #3b82f6;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-        }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            background: var(--card-bg);
-            padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            width: 100%;
-            max-width: 500px;
-        }
-        h1 {
-            text-align: center;
-            margin-bottom: 0.5rem;
-            color: var(--primary);
-        }
-        p.subtitle {
-            text-align: center;
-            color: var(--text-muted);
-            margin-bottom: 2rem;
-            font-size: 0.9rem;
-        }
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: bold;
-        }
-        input[type="url"], select {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: white;
-            box-sizing: border-box;
-            font-size: 1rem;
-        }
-        button {
-            width: 100%;
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        button:hover {
-            background: #2563eb;
-        }
-        #statusMessage {
-            margin-top: 1.5rem;
-            text-align: center;
-            padding: 10px;
-            border-radius: 8px;
-            display: none;
-        }
-        .success { background: #064e3b; color: #34d399; }
-        .processing { background: #422006; color: #fbbf24; }
-        .error { background: #7f1d1d; color: #fca5a5; }
+        body { font-family: Arial, sans-serif; background-color: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 100%; max-width: 400px; text-align: center; }
+        h1 { color: #60a5fa; margin-bottom: 5px; }
+        .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; text-align: right; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; }
+        input, select { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #2563eb; border: none; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        button:hover { background: #1d4ed8; }
+        #statusMessage { margin-top: 15px; padding: 10px; border-radius: 6px; display: none; font-size: 14px; }
     </style>
 </head>
 <body>
-
-    <div class="container">
+    <div class="card">
         <h1>محول الروايات</h1>
-        <p class="subtitle">يدعم Wattpad, Novelair, Uranus</p>
-
+        <p class="subtitle">يدعم واتباد، نوفلار، أورانوس وجميع المواقع</p>
+        
         <div class="form-group">
             <label for="novelUrl">رابط الرواية:</label>
-            <input type="url" id="novelUrl" placeholder="أدخل رابط الرواية هنا..." required>
+            <input type="url" id="novelUrl" placeholder="أدخل الرابط الكامل هنا (https://...)">
         </div>
-
- <select id="outputFormat">
-    <option value="epub">كتاب إلكتروني (EPUB)</option>
-    <option value="mobi">كتاب كيندل (MOBI)</option>
-    <option value="pdf">ملف مستندات (PDF)</option>
-    <option value="txt">ملف نصي بسيط (TXT)</option>
-    <option value="html">صفحة ويب مفردة (HTML)</option>
-</select>
-
-
-
+        
+        <div class="form-group">
+            <label for="outputFormat">صيغة التحميل:</label>
+            <select id="outputFormat">
+                <option value="epub">كتاب إلكتروني (EPUB)</option>
+                <option value="mobi">كتاب كيندل (MOBI)</option>
+                <option value="pdf">ملف مستندات (PDF)</option>
+                <option value="txt">ملف نصي بسيط (TXT)</option>
+                <option value="html">صفحة ويب مفردة (HTML)</option>
+            </select>
         </div>
-
+        
         <button onclick="startConversion()">بدء التحويل</button>
-
         <div id="statusMessage"></div>
     </div>
 
     <script>
         async function startConversion() {
-            const url = document.getElementById('novelUrl').value;
+            const url = document.getElementById('novelUrl').value.trim();
             const format = document.getElementById('outputFormat').value;
             const statusDiv = document.getElementById('statusMessage');
 
             if (!url) {
-                alert('الرجاء إدخال رابط الرواية');
+                alert('الرجاء إدخال رابط الرواية أولاً!');
                 return;
             }
 
-            // إظهار حالة جاري المعالجة
             statusDiv.style.display = 'block';
-            statusDiv.className = 'processing';
-            statusDiv.innerText = 'جاري سحب النصوص وتجهيز الملف... يرجى الانتظار.';
+            statusDiv.style.background = '#3b82f6';
+            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، يرجى الانتظار...';
 
             try {
-                // الاتصال بالخادم المحلي (a-Shell)
-                const backendUrl = 'http://127.0.0.1:5000/convert'; 
+                // ضع هنا رابط سيرفرك المباشر على Render بدلاً من الـ relative path لضمان الاتصال السليم
+                const backendUrl = 'https://novel-7z11.onrender.com/convert';
                 
                 const response = await fetch(backendUrl, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ url: url, format: format })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, format })
                 });
 
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || 'فشل في عملية التحويل');
-                }
+                if (!response.ok) throw new Error('فشل التحويل، تأكد من صحة الرابط');
 
-                // استلام الملف كبيانات ثنائية لبدء التحميل
                 const blob = await response.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
-                
-                // محاولة جلب اسم الملف الصحيح من الخادم
-                let filename = `novel.${format}`;
-                const disposition = response.headers.get('Content-Disposition');
-                if (disposition && disposition.indexOf('attachment') !== -1) {
-                    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-                    const matches = filenameRegex.exec(disposition);
-                    if (matches != null && matches[1]) { 
-                        // تنظيف الاسم من علامات الاقتباس إن وجدت
-                        filename = matches[1].replace(/['"]/g, '');
-                    }
-                }
-
-                // إنشاء رابط مخفي والضغط عليه برمجياً لتحميل الملف
                 const a = document.createElement('a');
                 a.href = downloadUrl;
-                a.download = decodeURIComponent(filename); // لفك تشفير الأسماء العربية
+                a.download = "novel_converted." + format;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
-                window.URL.revokeObjectURL(downloadUrl); // تنظيف الذاكرة
 
-                // إظهار رسالة النجاح
-                statusDiv.className = 'success';
-                statusDiv.innerText = `تم تحميل ملف ${format.toUpperCase()} بنجاح!`;
-
+                statusDiv.style.background = '#064e3b';
+                statusDiv.style.color = '#34d399';
+                statusDiv.innerText = 'تم التحميل بنجاح!';
             } catch (error) {
-                // إظهار رسالة الخطأ
-                statusDiv.className = 'error';
-                statusDiv.innerText = `خطأ: ${error.message}`;
-                console.error(error);
+                statusDiv.style.background = '#7f1d1d';
+                statusDiv.style.color = '#fca5a5';
+                statusDiv.innerText = 'خطأ: ' + error.message;
             }
         }
     </script>
