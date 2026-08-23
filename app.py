@@ -20,7 +20,6 @@ HEADERS = {
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
 }
 
-# واجهة الموقع المدمجة والتي تحتوي على جميع الصيغ بشكل مؤكد
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -48,7 +47,7 @@ HTML_TEMPLATE = """
         
         <div class="form-group">
             <label for="novelUrl">رابط الرواية:</label>
-            <input type="url" id="novelUrl" placeholder="أدخل الرابط الكامل هنا...">
+            <input type="url" id="novelUrl" placeholder="أدخل الرابط الكامل هنا (https://...)">
         </div>
         
         <div class="form-group">
@@ -79,7 +78,7 @@ HTML_TEMPLATE = """
 
             statusDiv.style.display = 'block';
             statusDiv.style.background = '#3b82f6';
-            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، قد يستغرق ذلك ثواني...';
+            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، يرجى الانتظار...';
 
             try {
                 const response = await fetch('/convert', {
@@ -378,3 +377,4 @@ def convert_novel():
 
 if __name__ == '__main__':
     app.run(0.0.0.0, port=5000)
+
