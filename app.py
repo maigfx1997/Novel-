@@ -13,57 +13,40 @@ HEADERS = {
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
 }
 
-def scrape_wattpad(url):
+def scrape_novel_content(url):
+    """دالة عامة ذكية لسحب العنوان وجميع النصوص والفقرات من أي رابط مدعوم"""
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
-        raise Exception(f"فشل الاتصال بـ Wattpad، الرمز: {response.status_code}")
-    soup = BeautifulSoup(response.content, 'html.parser')
-    title_tag = soup.find('h1', class_='story-title') or soup.find('div', class_='story-info__title')
-    title = title_tag.text.strip() if title_tag else "رواية_واتباد"
-    
-    content_div = soup.find('pre', class_='story-text') or soup.find('div', class_='part-text')
-    if not content_div:
-        paragraphs = soup.find_all('p')
-        content = "\n".join([p.text for p in paragraphs]) if paragraphs else "لم يتم العثور على محتوى."
-    else:
-        content = content_div.text.strip()
-    return title, content
-
-def scrape_novlar(url):
-    response = requests.get(url, headers=HEADERS)
-    if response.status_code != 200:
-        raise Exception(f"فشل الاتصال بـ Novlar، الرمز: {response.status_code}")
+        raise Exception(f"فشل الاتصال بالموقع، رمز الاستجابة: {response.status_code}")
+        
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    title_tag = soup.find('h1') or soup.find('h2', class_='chapter-title')
-    title = title_tag.text.strip() if title_tag else "رواية_نوفلار"
+    # 1. استخراج عنوان الرواية أو الفصل بأكثر من طريقة مضمونة
+    title_tag = soup.find('h1') or soup.find('h2', class_='story-title') or soup.find('title')
+    title = title_tag.text.strip() if title_tag else "رواية_مترجمة"
     
-    content_container = soup.find('div', class_='reading-content') or soup.find('div', class_='text-left') or soup.find('div', class_='entry-content') or soup.find('div', class_='chapter-content')
-    if content_container:
-        paragraphs = content_container.find_all(['p', 'div'])
-        content = "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
-    else:
-        paragraphs = soup.find_all('p')
-        content = "\n".join([p.text for p in paragraphs]) if paragraphs else "لم يتم العثور على محتوى."
+    # 2. سحب جميع الفقرات النصية المتاحة في الصفحة لضمان عدم إفراغ المحتوى
+    paragraphs = soup.find_all('p')
+    content_list = []
     
-    return title, content
-
-def scrape_uranus(url):
-    response = requests.get(url, headers=HEADERS)
-    if response.status_code != 200:
-        raise Exception(f"فشل الاتصال بـ Uranus، الرمز: {response.status_code}")
-    soup = BeautifulSoup(response.content, 'html.parser')
+    for p in paragraphs:
+        text = p.get_text().strip()
+        # استبعاد النصوص القصيرة جداً أو الخاصة بالقوائم والإعلانات
+        if len(text) > 20: 
+            content_list.append(text)
+            
+    if not content_list:
+        # محاولة بديلة لو كانت النصوص داخل وسم pre أو div رئيسي
+        divs = soup.find_all(['pre', 'div'], class_=lambda x: x and ('content' in x or 'text' in x or 'read' in x))
+        for d in divs:
+            text = d.get_text().strip()
+            if len(text) > 50:
+                content_list.append(text)
+                
+    content = "\n\n".join(content_list)
     
-    title_tag = soup.find('h1')
-    title = title_tag.text.strip() if title_tag else "رواية_أورانوس"
-    
-    content_container = soup.find('div', class_='chapter-inner') or soup.find('div', class_='read-container') or soup.find('div', class_='entry-content')
-    if content_container:
-        paragraphs = content_container.find_all(['p'])
-        content = "\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
-    else:
-        paragraphs = soup.find_all('p')
-        content = "\n".join([p.text for p in paragraphs]) if paragraphs else "لم يتم العثور على محتوى."
+    if not content.strip():
+        raise Exception("عذراً، لم يتم العثور على نص داخل هذه الصفحة. قد تكون محمية أو تتطلب تسجيل دخول.")
         
     return title, content
 
@@ -107,16 +90,12 @@ def convert_novel():
     if not url:
         return jsonify({"error": "رابط الرواية مفقود"}), 400
 
-    output_filename = None
     try:
-        if 'wattpad.com' in url:
-            title, content = scrape_wattpad(url)
-        elif 'novlar' in url:
-            title, content = scrape_novlar(url)
-        elif 'uranus' in url:
-            title, content = scrape_uranus(url)
+        # التحقق من دعم الروابط
+        if 'wattpad.com' in url or 'novlar' in url or 'uranus' in url or 'http' in url:
+            title, content = scrape_novel_content(url)
         else:
-            return jsonify({"error": "عذراً، هذا الموقع غير مدعوم حالياً. يدعم النظام Wattpad, Novlar, Uranus"}), 400
+            return jsonify({"error": "عذراً، هذا الرابط غير مدعوم."}), 400
 
         if format_type == 'epub':
             safe_title = "".join([c for c in title if c.isalnum() or c.isspace()]).strip()
@@ -133,7 +112,7 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Novel Converter Backend is Running!"
+    return "Novel Converter Backend is Running with Full Content Scraper!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
