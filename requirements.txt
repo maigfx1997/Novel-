@@ -4,4 +4,6 @@ requests
 beautifulsoup4
 EbookLib
 reportlab
+gunicorn
+
 
