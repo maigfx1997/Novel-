@@ -35,11 +35,9 @@ def scrape_novlar(url):
         raise Exception(f"فشل الاتصال بـ Novlar، الرمز: {response.status_code}")
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    # استخراج العنوان من Novlar
     title_tag = soup.find('h1') or soup.find('h2', class_='chapter-title')
     title = title_tag.text.strip() if title_tag else "رواية_نوفلار"
     
-    # محتوى الفصل في Novlar
     content_container = soup.find('div', class_='reading-content') or soup.find('div', class_='text-left') or soup.find('div', class_='entry-content') or soup.find('div', class_='chapter-content')
     if content_container:
         paragraphs = content_container.find_all(['p', 'div'])
@@ -109,6 +107,7 @@ def convert_novel():
     if not url:
         return jsonify({"error": "رابط الرواية مفقود"}), 400
 
+    output_filename = None
     try:
         if 'wattpad.com' in url:
             title, content = scrape_wattpad(url)
@@ -125,15 +124,7 @@ def convert_novel():
             
             generate_epub(title, content, output_filename)
             
-            response = send_file(output_filename, as_attachment=True)
-            @response.call_on_closing
-            def cleanup():
-                try:
-                    if os.path.exists(output_filename):
-                        os.remove(output_filename)
-                except Exception:
-                    pass
-            return response
+            return send_file(output_filename, as_attachment=True)
         else:
             return jsonify({"error": "صيغة PDF قيد التطوير، يرجى اختيار EPUB"}), 501
 
@@ -142,7 +133,8 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Novel Converter Backend is Running with Novlar Support!"
+    return "Novel Converter Backend is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
