@@ -14,6 +14,14 @@ HEADERS = {
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
 }
 
+def clean_text(text):
+    """دالة لتنظيف النصوص وإزالة الأحرف غير المسموحة في ملفات XML/EPUB"""
+    if not text:
+        return ""
+    # إزالة أحرف التحكم والرموز غير المعتمدة
+    cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
+    return cleaned.strip()
+
 def scrape_full_novel(url):
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
@@ -21,53 +29,46 @@ def scrape_full_novel(url):
         
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    # استخراج عنوان الرواية
     title_tag = soup.find('h1') or soup.find('h2', class_='story-title') or soup.find('title')
-    title = title_tag.text.strip() if title_tag else "رواية_مترجمة"
+    title = clean_text(title_tag.text) if title_tag else "رواية_مترجمة"
     
     chapters_data = []
     seen_links = set()
     
-    # استخراج روابط الفصول المتاحة في الصفحة (تتوافق مع بنية الفهارس في واتباد ونوفلار وأورانوس)
     for a in soup.find_all('a', href=True):
         href = a['href']
-        text = a.get_text().strip()
+        text = clean_text(a.get_text())
         
-        # فلترة الروابط لتشمل صفحات الفصول الخاصة بالمواقع المدعومة
         if any(keyword in href.lower() for keyword in ['chapter', 'part', 'ch-', 'story', 'read']) or 'الفصل' in text or 'الحلقة' in text:
             full_link = href if href.startswith('http') else requests.compat.urljoin(url, href)
             if full_link not in seen_links and full_link != url:
                 seen_links.add(full_link)
                 chapters_data.append((text or f"فصل", full_link))
                 
-    # إذا كانت الصفحة عبارة عن فصل فردي وليست فهرساً، يتم سحب محتواها مباشرة
     if not chapters_data:
         paragraphs = soup.find_all('p')
-        content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
+        content = "\n\n".join([clean_text(p.get_text()) for p in paragraphs if len(p.get_text().strip()) > 20])
         return title, [(title, content)]
         
-    # سحب محتوى كل فصل تم العثور عليه (بحد أقصى 50 فصلاً لضمان سرعة الاستجابة)
     fully_scraped_chapters = []
     for ch_title, ch_url in chapters_data[:50]:
         try:
             ch_res = requests.get(ch_url, headers=HEADERS)
             if ch_res.status_code == 200:
                 ch_soup = BeautifulSoup(ch_res.content, 'html.parser')
-                
-                # البحث عن حاويات النصوص الخاصة بالمواقع الثلاثة
                 content_container = ch_soup.find('pre', class_='story-text') or ch_soup.find('div', class_='reading-content') or ch_soup.find('div', class_='chapter-inner') or ch_soup
                 
                 paragraphs = content_container.find_all(['p', 'div'])
-                ch_content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
+                ch_content = "\n\n".join([clean_text(p.get_text()) for p in paragraphs if len(p.get_text().strip()) > 20])
                 
                 if len(ch_content) > 50:
-                    fully_scraped_chapters.append((ch_title, ch_content))
+                    fully_scraped_chapters.append((clean_text(ch_title), ch_content))
         except Exception:
             continue
             
     if not fully_scraped_chapters:
         paragraphs = soup.find_all('p')
-        content = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
+        content = "\n\n".join([clean_text(p.get_text()) for p in paragraphs if len(p.get_text().strip()) > 20])
         return title, [(title, content)]
         
     return title, fully_scraped_chapters
@@ -121,7 +122,6 @@ def convert_novel():
         return jsonify({"error": "رابط الرواية مفقود"}), 400
 
     try:
-        # التحقق من أن الرابط ينتمي لإحدى المنصات المدعومة
         if any(domain in url for domain in ['wattpad.com', 'novlar', 'uranus']):
             title, chapters_data = scrape_full_novel(url)
         else:
@@ -142,7 +142,8 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Multi-Site Full Novel Converter is Running!"
+    return "Sanitized Full Novel Converter Backend is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
