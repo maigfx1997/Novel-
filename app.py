@@ -9,10 +9,8 @@ import uuid
 from urllib.parse import urljoin
 import concurrent.futures
 
-# استيراد أدوات بناء الـ PDF الآمنة
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from reportlab.lib import colors
 
 app = Flask(__name__)
 CORS(app)
@@ -179,13 +177,10 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
     epub.write_epub(output_filename, book, {})
 
 def generate_pdf(title, desc, chapters_data, output_filename):
-    """توليد ملف PDF متوافق وخفيف"""
     c = canvas.Canvas(output_filename, pagesize=letter)
     width, height = letter
-    
     c.setFont("Helvetica-Bold", 16)
     c.drawString(50, height - 50, title[:50])
-    
     y = height - 90
     c.setFont("Helvetica", 11)
     
@@ -194,15 +189,12 @@ def generate_pdf(title, desc, chapters_data, output_filename):
         results = executor.map(process_single_chapter, indexed_chapters)
         for _, ch_title, _, ch_text in results:
             if len(ch_text) < 20: continue
-            
             if y < 100:
                 c.showPage()
                 y = height - 50
-                
             c.setFont("Helvetica-Bold", 13)
             c.drawString(50, y, ch_title[:60])
             y -= 25
-            
             c.setFont("Helvetica", 10)
             for line in ch_text.split('\n'):
                 if line.strip():
@@ -212,7 +204,6 @@ def generate_pdf(title, desc, chapters_data, output_filename):
                     c.drawString(50, y, line[:90])
                     y -= 15
             y -= 20
-            
     c.save()
 
 def generate_txt(title, desc, chapters_data, output_filename):
@@ -230,6 +221,29 @@ def generate_txt(title, desc, chapters_data, output_filename):
                     f.write(f"\n\n--- {ch_title} ---\n\n")
                     f.write(ch_text)
                     f.write("\n\n")
+
+def generate_html_archive(title, desc, chapters_data, output_filename):
+    html_content = f"""<!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head><meta charset="UTF-8"><title>{title}</title>
+    <style>body{{font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; max-width: 800px; margin: auto; background: #f9f9f9;}} h1, h2{{color: #333;}} .chapter{{background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}}</style>
+    </head>
+    <body>
+    <h1>{title}</h1>
+    """
+    if desc:
+        html_content += f"<div class='chapter'><h2>وصف الرواية</h2><p>{desc}</p></div>"
+        
+    indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        results = executor.map(process_single_chapter, indexed_chapters)
+        for idx, ch_title, ch_html, _ in results:
+            if len(ch_html) > 20:
+                html_content += f"<div class='chapter'><h2>{ch_title}</h2>{ch_html}</div>"
+                
+    html_content += "</body></html>"
+    with open(output_filename, 'w', encoding='utf-8') as f:
+        f.write(html_content)
 
 @app.route('/convert', methods=['POST'])
 def convert_novel():
@@ -250,6 +264,13 @@ def convert_novel():
         elif format_type == 'pdf':
             output_filename = f"{safe_title or 'novel'}.pdf"
             generate_pdf(title, desc, chapters_data, output_filename)
+        elif format_type == 'html':
+            output_filename = f"{safe_title or 'novel'}.html"
+            generate_html_archive(title, desc, chapters_data, output_filename)
+        elif format_type == 'mobi':
+            # تنسيق MOBI يعتمد على بنية الـ EPUB القياسية المعتمدة من أمازون
+            output_filename = f"{safe_title or 'novel'}.mobi"
+            generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
         else:
             output_filename = f"{safe_title or 'novel'}.epub"
             generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
@@ -261,8 +282,8 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Universal Multi-Format Novel Converter is Running!"
+    return "Universal All-Format Novel Converter with MOBI is Running!"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(0.0.0.0, port=5000)
 
