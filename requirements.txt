@@ -1,6 +1,7 @@
-flask
-flask-cors
+Flask
+Flask-Cors
 requests
 beautifulsoup4
 EbookLib
-gunicorn
+reportlab
+
