@@ -15,10 +15,8 @@ HEADERS = {
 }
 
 def clean_text(text):
-    """دالة لتنظيف النصوص وإزالة الأحرف غير المسموحة في ملفات XML/EPUB"""
     if not text:
         return ""
-    # إزالة أحرف التحكم والرموز غير المعتمدة
     cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
     return cleaned.strip()
 
@@ -29,8 +27,11 @@ def scrape_full_novel(url):
         
     soup = BeautifulSoup(response.content, 'html.parser')
     
-    title_tag = soup.find('h1') or soup.find('h2', class_='story-title') or soup.find('title')
+    # استخراج عنوان الرواية الأساسي بوضوح
+    title_tag = soup.find('h1', class_=lambda x: x and ('title' in x or 'story' in x)) or soup.find('h1') or soup.find('title')
     title = clean_text(title_tag.text) if title_tag else "رواية_مترجمة"
+    # تنظيف العنوان لو احتوى على زوائد
+    title = title.split('|')[0].split('-')[0].strip() or "رواية_مترجمة"
     
     chapters_data = []
     seen_links = set()
@@ -78,7 +79,7 @@ def generate_full_epub(title, chapters_data, output_filename):
     book.set_identifier('id_full_novel')
     book.set_title(title)
     book.set_language('ar')
-    book.add_author('Novel Converter')
+    book.add_author('Maissa Graphics')
 
     spine_items = ['nav']
     toc_links = []
@@ -142,8 +143,7 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Sanitized Full Novel Converter Backend is Running!"
+    return "Clean Title Novel Converter is Running!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-
