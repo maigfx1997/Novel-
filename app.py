@@ -225,9 +225,7 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
     for idx, ch_title, ch_html, _ in scraped_results:
         if len(ch_html) < 20: continue
             
-        file_name = f'chap_{idx:03d}.xhtml'
-c = epub.EpubHtml(title=ch_title, file_name=file_name, lang='ar')
-c.content = f'<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">\n<head><title>{ch_title}</title></head>\n<body><div dir="rtl"><h2>{ch_title}</h2>{str(ch_soup)}</div></body>\n</html>'
+        c.content = f'<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">\n<head><title>{ch_title}</title></head>\n<body><div dir="rtl"><h2>{ch_title}</h2>{str(ch_soup)}</div></body>\n</html>'
 
 
         book.add_item(c)
