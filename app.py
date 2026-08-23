@@ -21,7 +21,7 @@ def clean_text(text):
     return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text).strip()
 
 def fetch_resource(url):
-    """دالة لتحميل الصور (الغلاف وصور الفصول)"""
+    """تحميل الصور (للغلاف والفصول)"""
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         if res.status_code == 200:
@@ -31,13 +31,12 @@ def fetch_resource(url):
     return None
 
 def scrape_universal_metadata(url):
-    """خوارزمية ذكية لاستخراج الغلاف، الوصف، والعنوان من أي موقع"""
+    """استخراج الغلاف، الوصف، والعنوان من أي موقع"""
     res = requests.get(url, headers=HEADERS)
     if res.status_code != 200:
         raise Exception(f"فشل الاتصال، الرمز: {res.status_code}")
     soup = BeautifulSoup(res.content, 'html.parser')
     
-    # --- استخراج العنوان ---
     title = "رواية_مجهولة"
     title_tag = soup.find('meta', property='og:title')
     if title_tag:
@@ -47,72 +46,67 @@ def scrape_universal_metadata(url):
         if t_tag: title = t_tag.text
     title = clean_text(title.split('|')[0].split('-')[0])
     
-    # --- استخراج الوصف ---
     desc = ""
     desc_tag = soup.find('meta', property='og:description') or soup.find('meta', attrs={'name': 'description'})
     if desc_tag:
         desc = clean_text(desc_tag.get('content'))
     
-    # --- استخراج الغلاف ---
     cover_url = None
     cover_tag = soup.find('meta', property='og:image')
     if cover_tag:
         cover_url = cover_tag.get('content')
     elif soup.find('img', class_=lambda x: x and ('cover' in x or 'thumb' in x or 'poster' in x)):
-        cover_url = soup.find('img', class_=lambda x: x and ('cover' in x or 'thumb' in x or 'poster' in x)).get('src')
+        img_tag = soup.find('img', class_=lambda x: x and ('cover' in x or 'thumb' in x or 'poster' in x))
+        cover_url = img_tag.get('src')
     
     if cover_url:
         cover_url = urljoin(url, cover_url)
 
-    # --- استخراج روابط الفصول ---
     chapters_data = []
     seen_links = set()
     
     for a in soup.find_all('a', href=True):
         href = a['href']
         text = clean_text(a.get_text())
-        # كلمات مفتاحية عالمية للفصول في كل المواقع
         if any(k in href.lower() for k in ['chapter', 'part', 'ch-', 'story', 'read', 'episode']) or any(k in text for k in ['الفصل', 'الحلقة', 'جزء', 'chapter', 'part']):
             full_link = urljoin(url, href)
-            # تجنب روابط التعليقات أو الروابط المكررة
             if full_link not in seen_links and full_link != url and '#' not in href:
                 seen_links.add(full_link)
                 chapters_data.append((text or f"فصل", full_link))
                 
     if not chapters_data:
-        chapters_data = [(title, url)] # إذا كانت الصفحة فصل واحد فقط
+        chapters_data = [(title, url)]
         
-    # سحب أول 50 فصل كحد أقصى لتجنب توقف السيرفر (TimeOut)
     return title, desc, cover_url, chapters_data[:50]
 
-def extract_chapter_html(ch_url):
-    """دالة لاستخراج نصوص الفصل والصور الموجودة بداخله"""
+def extract_chapter_content(ch_url):
+    """استخراج النصوص والصور من الفصول"""
     try:
         res = requests.get(ch_url, headers=HEADERS, timeout=15)
         if res.status_code == 200:
             soup = BeautifulSoup(res.content, 'html.parser')
-            
-            # محاولة إيجاد الحاوية الرئيسية للنص
             content_div = soup.find('div', class_=lambda x: x and ('reading-content' in x or 'chapter-inner' in x or 'story-text' in x or 'entry-content' in x))
             if not content_div:
                 content_div = soup.find('pre', class_=lambda x: x and 'story' in x)
             if not content_div:
-                content_div = soup # في حال لم يجد حاوية واضحة
+                content_div = soup
             
-            # جمع الفقرات والصور فقط
             html_parts = []
+            text_parts = []
             for el in content_div.find_all(['p', 'img']):
                 if el.name == 'img':
                     src = el.get('src') or el.get('data-src')
                     if src:
                         html_parts.append(f'<img src="{urljoin(ch_url, src)}" />')
                 elif el.name == 'p' and len(el.get_text().strip()) > 0:
-                    html_parts.append(f'<p>{clean_text(el.get_text())}</p>')
+                    clean_p = clean_text(el.get_text())
+                    html_parts.append(f'<p>{clean_p}</p>')
+                    text_parts.append(clean_p)
             
-            return "\n".join(html_parts)
+            return "\n".join(html_parts), "\n\n".join(text_parts)
     except Exception:
         pass
-    return ""
+    return "", ""
 
 def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename):
     book = epub.EpubBook()
@@ -123,30 +117,25 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
 
     spine_items = ['nav']
 
-    # 1. إضافة الغلاف
     if cover_url:
         cover_bytes = fetch_resource(cover_url)
         if cover_bytes:
             book.set_cover("cover.jpg", cover_bytes)
             spine_items.append('cover')
 
-    # 2. إضافة صفحة الوصف
     if desc:
         desc_item = epub.EpubHtml(title='وصف الرواية', file_name='desc.xhtml', lang='ar')
         desc_item.content = f'<div dir="rtl" style="font-family: Arial, sans-serif;"><h2>وصف الرواية</h2><p>{desc}</p></div>'
         book.add_item(desc_item)
         spine_items.append(desc_item)
 
-    # 3. معالجة الفصول والصور الداخلية
     toc_links = []
     for idx, (ch_title, ch_url) in enumerate(chapters_data, start=1):
-        ch_html = extract_chapter_html(ch_url)
+        ch_html, _ = extract_chapter_content(ch_url)
         if len(ch_html) < 20: 
-            continue # تجاهل الفصول الفارغة
+            continue
             
         ch_soup = BeautifulSoup(ch_html, 'html.parser')
-        
-        # معالجة الصور الداخلية في الفصل وتحميلها
         for img in ch_soup.find_all('img'):
             src = img.get('src')
             if src:
@@ -155,12 +144,10 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
                     img_name = f"img_{uuid.uuid4().hex[:6]}.jpg"
                     epub_img = epub.EpubItem(uid=img_name, file_name=f"images/{img_name}", media_type="image/jpeg", content=img_bytes)
                     book.add_item(epub_img)
-                    
-                    # استبدال رابط الصورة في HTML بالرابط المحلي داخل الكتاب
                     img['src'] = f"images/{img_name}"
                     img['style'] = "max-width: 100%; height: auto; display: block; margin: 10px auto;"
                 else:
-                    img.decompose() # حذف الصورة إذا فشل تحميلها
+                    img.decompose()
 
         file_name = f'chap_{idx:03d}.xhtml'
         c = epub.EpubHtml(title=ch_title, file_name=file_name, lang='ar')
@@ -181,6 +168,22 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
 
     epub.write_epub(output_filename, book, {})
 
+def generate_txt(title, desc, chapters_data, output_filename):
+    """توليد ملف نصي خفيف كبديل شامل"""
+    with open(output_filename, 'w', encoding='utf-8') as f:
+        f.write(f"عنوان الرواية: {title}\n\n")
+        if desc:
+            f.write(f"الوصف:\n{desc}\n\n")
+        f.write("="*50 + "\n\n")
+        
+        for idx, (ch_title, ch_url) in enumerate(chapters_data, start=1):
+            _, ch_text = extract_chapter_content(ch_url)
+            if len(ch_text) < 20: 
+                continue
+            f.write(f"\n\n--- {ch_title} ---\n\n")
+            f.write(ch_text)
+            f.write("\n\n")
+
 @app.route('/convert', methods=['POST'])
 def convert_novel():
     data = request.json
@@ -188,15 +191,19 @@ def convert_novel():
         return jsonify({"error": "البيانات أو الرابط مفقود"}), 400
         
     url = data.get('url').strip()
+    format_type = data.get('format', 'epub').lower()
 
     try:
-        # لم نعد نقيد الروابط بمواقع محددة، سيعمل مع أي موقع!
         title, desc, cover_url, chapters_data = scrape_universal_metadata(url)
-
         safe_title = "".join([c for c in title if c.isalnum() or c.isspace()]).strip()
-        output_filename = f"{safe_title or 'novel'}_ultimate.epub"
         
-        generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
+        # اختيار الصيغة بناءً على طلب المتصفح
+        if format_type == 'txt':
+            output_filename = f"{safe_title or 'novel'}.txt"
+            generate_txt(title, desc, chapters_data, output_filename)
+        else:
+            output_filename = f"{safe_title or 'novel'}.epub"
+            generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename)
         
         return send_file(output_filename, as_attachment=True)
 
@@ -205,9 +212,10 @@ def convert_novel():
 
 @app.route('/')
 def home():
-    return "Universal Novel & Fanfic Converter is Running Perfectly!"
+    return "Universal Novel Converter is Running Perfectly!"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
 
