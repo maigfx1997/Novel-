@@ -42,51 +42,71 @@
         <div id="statusMessage"></div>
     </div>
 
-    <script>
-        async function startConversion() {
-            const url = document.getElementById('novelUrl').value.trim();
-            const format = document.getElementById('outputFormat').value;
-            const statusDiv = document.getElementById('statusMessage');
+async function startConversion() {
+        const url = document.getElementById('novelUrl').value.trim();
+        const format = document.getElementById('outputFormat').value;
+        const statusDiv = document.getElementById('statusMessage');
 
-            if (!url) {
-                alert('الرجاء إدخال رابط الرواية أولاً!');
-                return;
-            }
-
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#3b82f6';
-            statusDiv.innerText = 'جاري سحب الفصول وتجهيز الملف، يرجى الانتظار...';
-
-            try {
-                // ضع هنا رابط سيرفرك المباشر على Render بدلاً من الـ relative path لضمان الاتصال السليم
-                const backendUrl = 'https://novel-7z11.onrender.com/convert';
-                
-                const response = await fetch(backendUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, format })
-                });
-
-                if (!response.ok) throw new Error('فشل التحويل، تأكد من صحة الرابط');
-
-                const blob = await response.blob();
-                const downloadUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = "novel_converted." + format;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-
-                statusDiv.style.background = '#064e3b';
-                statusDiv.style.color = '#34d399';
-                statusDiv.innerText = 'تم التحميل بنجاح!';
-            } catch (error) {
-                statusDiv.style.background = '#7f1d1d';
-                statusDiv.style.color = '#fca5a5';
-                statusDiv.innerText = 'خطأ: ' + error.message;
-            }
+        if (!url) {
+            alert('الرجاء إدخال رابط الرواية أو الفانفيك');
+            return;
         }
+
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#3b82f6';
+        statusDiv.style.color = '#ffffff';
+        statusDiv.innerText = '...جاري سحب الفصول وتجهيز الملف، يرجى الانتظار';
+
+        try {
+            // الاتصال بالسيرفر عبر المسار النسبي (هذا ممتاز وسيعمل على Render)
+            const backendUrl = '/convert'; 
+
+            const response = await fetch(backendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, format })
+            });
+
+            // التحقق من نجاح العملية ومعالجة الأخطاء
+            if (!response.ok) {
+                let errorMsg = 'فشل التحويل، تأكد من صحة الرابط';
+                try {
+                    const errorData = await response.json();
+                    if (errorData.error) errorMsg = errorData.error;
+                } catch (e) { /* تجاهل إذا لم يكن JSON */ }
+                throw new Error(errorMsg);
+            }
+
+            // استقبال الملف وبناء رابط التحميل
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            
+            // تحديد الامتداد الصحيح بناءً على الصيغة (AZW3 بدلاً من MOBI)
+            let extension = format.toLowerCase();
+            if (format === 'AZW3') {
+                extension = 'azw3';
+            }
+
+            a.href = downloadUrl;
+            a.download = `novel_converted.${extension}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+
+            // حالة النجاح
+            statusDiv.style.background = '#06e4e3b';
+            statusDiv.style.color = '#3d4399';
+            statusDiv.innerText = 'تم التحميل بنجاح!';
+            
+        } catch (error) {
+            // حالة الخطأ
+            statusDiv.style.background = '#ff1d1d';
+            statusDiv.style.color = '#fca5a5';
+            statusDiv.innerText = `خطأ: ${error.message}`;
+        }
+    }
     </script>
 </body>
 </html>
