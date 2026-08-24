@@ -6,7 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from app import scrape_novel_from_url, convert_to_epub, convert_to_pdf, convert_to_txt, convert_to_azw3, convert_to_html
 
 # ضع التوكن هنا
-TOKEN = "8261617329:AAEjhQHSBopSCDKx6nPRCRhGqC-ykMVnvc0"
+TOKEN = "8261617329:AAEjhQHSBopSCDKx6nPRChGqC-ykMVnvc0"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر البداية"""
