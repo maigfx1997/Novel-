@@ -15,10 +15,11 @@ from reportlab.pdfgen import canvas
 app = Flask(__name__)
 CORS(app)
 
+# التنكر كعنكبوت بحث جوجل (Googlebot) لتجاوز الحظر
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
     'Referer': 'https://www.google.com/'
 }
 
@@ -77,7 +78,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return;
             }
 
-            // تنظيف الرابط تلقائياً
+            // تنظيف الرابط تلقائياً من الإضافات
             if (url.includes('?')) {
                 url = url.split('?')[0];
             }
@@ -93,7 +94,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     body: JSON.stringify({ url, format })
                 });
 
-                if (!response.ok) throw new Error('Conversion failed. The site might be blocking the server.');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Conversion failed. The site might be blocking the server.');
+                }
 
                 const blob = await response.blob();
                 const downloadUrl = window.URL.createObjectURL(blob);
@@ -123,7 +127,8 @@ def clean_text(text):
 
 def fetch_resource(url):
     try:
-        res = requests.get(url, headers=HEADERS, timeout=5)
+        session = requests.Session()
+        res = session.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
             return res.content
     except:
@@ -135,10 +140,19 @@ def scrape_universal_metadata(url):
         raise Exception("Invalid URL, must start with https://")
         
     clean_url = url.split('?')[0]
+    session = requests.Session()
     
-    res = requests.get(clean_url, headers=HEADERS, timeout=15)
+    # محاولة جلب الصفحة الرئيسية للرواية
+    res = session.get(clean_url, headers=HEADERS, timeout=15)
+    
+    # إذا تم الحظر، نحاول بترويسة متصفح عادي كخطة بديلة
     if res.status_code != 200:
-        raise Exception(f"Connection failed, status: {res.status_code}")
+        fallback_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        res = session.get(clean_url, headers=fallback_headers, timeout=15)
+        if res.status_code != 200:
+            raise Exception(f"Connection failed (Status: {res.status_code}). The site is strictly blocking cloud servers.")
         
     soup = BeautifulSoup(res.content, 'html.parser')
     
@@ -179,7 +193,8 @@ def scrape_universal_metadata(url):
 def process_single_chapter(ch_data):
     idx, ch_title, ch_url = ch_data
     try:
-        res = requests.get(ch_url, headers=HEADERS, timeout=10)
+        session = requests.Session()
+        res = session.get(ch_url, headers=HEADERS, timeout=10)
         if res.status_code == 200:
             soup = BeautifulSoup(res.content, 'html.parser')
             content_div = soup.find('div', class_=lambda x: x and ('part-text' in x or 'reading-content' in x or 'story-text' in x or 'entry-content' in x or 'userstuff' in x))
