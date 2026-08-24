@@ -17,7 +17,8 @@ app = Flask(__name__)
 # ترويسات المتصفح لتجاوز الحظر
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9',
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
     'Referer': 'https://www.google.com/',
     'DNT': '1'
 }
