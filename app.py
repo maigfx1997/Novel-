@@ -79,7 +79,7 @@ def scrape_novel_from_url(url):
     # ---------------------------------------------------------
     if "wattpad.com" in clean_url:
         import re
-        match = re.search(r'/story/(\d+)', clean_url)
+        
         if not match:
             return None, "Invalid Wattpad URL"
             
