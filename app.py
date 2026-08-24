@@ -15,10 +15,10 @@ from reportlab.pdfgen import canvas
 app = Flask(__name__)
 CORS(app)
 
-# التنكر كعنكبوت بحث جوجل (Googlebot) لتجاوز الحظر
+# ترويسات متعددة لتخطي الحمايات من مختلف المواقع
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
     'Referer': 'https://www.google.com/'
 }
@@ -78,7 +78,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 return;
             }
 
-            // تنظيف الرابط تلقائياً من الإضافات
             if (url.includes('?')) {
                 url = url.split('?')[0];
             }
@@ -127,8 +126,7 @@ def clean_text(text):
 
 def fetch_resource(url):
     try:
-        session = requests.Session()
-        res = session.get(url, headers=HEADERS, timeout=5)
+        res = requests.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
             return res.content
     except:
@@ -142,22 +140,18 @@ def scrape_universal_metadata(url):
     clean_url = url.split('?')[0]
     session = requests.Session()
     
-    # محاولة جلب الصفحة الرئيسية للرواية
     res = session.get(clean_url, headers=HEADERS, timeout=15)
     
-    # إذا تم الحظر، نحاول بترويسة متصفح عادي كخطة بديلة
     if res.status_code != 200:
-        fallback_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+        fallback_headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
         res = session.get(clean_url, headers=fallback_headers, timeout=15)
         if res.status_code != 200:
-            raise Exception(f"Connection failed (Status: {res.status_code}). The site is strictly blocking cloud servers.")
+            raise Exception(f"Connection blocked by the site (Status: {res.status_code}).")
         
     soup = BeautifulSoup(res.content, 'html.parser')
     
     title = "Novel_Converted"
-    title_tag = soup.find('meta', property='og:title') or soup.find('h1')
+    title_tag = soup.find('meta', property='og:title') or soup.find('h1') or soup.find('title')
     if title_tag:
         title = clean_text(title_tag.get('content') if title_tag.get('content') else title_tag.text)
     
@@ -176,19 +170,26 @@ def scrape_universal_metadata(url):
     chapters_data = []
     seen_links = set()
     
+    # بحث ذكي عن الفصول باللغتين العربية والإنجليزية
+    chapter_keywords = ['ch-', 'part', 'chapter', 'works', 'story', 'فصل', 'جزء', 'رواية']
+    
     for a in soup.find_all('a', href=True):
         href = a.get('href', '')
         text = clean_text(a.get_text())
-        if '/story/' in href or '/chapter/' in href or '/works/' in href or any(k in href for k in ['ch-', 'part']):
+        
+        is_chapter = any(k in href.lower() for k in chapter_keywords) or re.search(r'ch(apter)?-?\d+', href, re.I)
+        
+        if is_chapter:
             full_link = urljoin(clean_url, href)
             if full_link not in seen_links and full_link != clean_url and '#' not in href:
                 seen_links.add(full_link)
-                chapters_data.append((text or f"Chapter", full_link))
+                chapters_data.append((text or f"Chapter {len(chapters_data)+1}", full_link))
                 
     if not chapters_data:
+        # إذا لم يجد فصول، يعتبر الرابط نفسه هو الفصل الوحيد (للقصص القصيرة)
         chapters_data = [(title, clean_url)]
         
-    return title, desc, cover_url, chapters_data[:30]
+    return title, desc, cover_url, chapters_data[:50] # سحب حتى 50 فصل
 
 def process_single_chapter(ch_data):
     idx, ch_title, ch_url = ch_data
@@ -197,19 +198,24 @@ def process_single_chapter(ch_data):
         res = session.get(ch_url, headers=HEADERS, timeout=10)
         if res.status_code == 200:
             soup = BeautifulSoup(res.content, 'html.parser')
-            content_div = soup.find('div', class_=lambda x: x and ('part-text' in x or 'reading-content' in x or 'story-text' in x or 'entry-content' in x or 'userstuff' in x))
+            
+            # محاولة إيجاد حاوية النص بدقة
+            content_div = soup.find('div', class_=re.compile(r'part-text|reading-content|story-text|entry-content|userstuff|content|chapter-content', re.I))
+            
+            # إذا لم يجد حاوية مخصصة، يبحث في كل الفقرات داخل الصفحة
             if not content_div:
-                content_div = soup
+                content_div = soup.find('article') or soup.find('main') or soup
             
             html_parts = []
             text_parts = []
-            paragraphs = content_div.find_all(['p', 'div']) if content_div else []
+            
+            paragraphs = content_div.find_all('p')
+            
             for el in paragraphs:
-                if el.name == 'p' or (el.name == 'div' and len(el.get('class', [])) == 0):
-                    txt = clean_text(el.get_text())
-                    if len(txt) > 20 and not any(k in txt for k in ['Ranks', '#top', 'Completed', 'Starting date']):
-                        html_parts.append(f'<p>{txt}</p>')
-                        text_parts.append(txt)
+                txt = clean_text(el.get_text())
+                if len(txt) > 10 and not any(k in txt.lower() for k in ['ranks', 'completed', 'starting date', 'all rights reserved']):
+                    html_parts.append(f'<p>{txt}</p>')
+                    text_parts.append(txt)
             
             return idx, ch_title, "\n".join(html_parts), "\n\n".join(text_parts)
     except:
@@ -217,11 +223,25 @@ def process_single_chapter(ch_data):
     return idx, ch_title, "", ""
 
 def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filename):
+    scraped_results = []
+    indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        results = executor.map(process_single_chapter, indexed_chapters)
+        for res in results:
+            scraped_results.append(res)
+            
+    # التحقق من وجود نصوص لتجنب خطأ Document is empty
+    valid_chapters = [res for res in scraped_results if len(res[2]) > 20]
+    
+    if not valid_chapters:
+        raise Exception("No readable text found. The site might be protected or the content is hidden.")
+
     book = epub.EpubBook()
     book.set_identifier(f'id_{uuid.uuid4().hex}')
     book.set_title(title)
     book.set_language('ar')
-    book.add_author('Maissa Graphics | Auto Converter')
+    book.add_author('Maissa Graphics')
 
     spine_items = ['nav']
 
@@ -238,17 +258,8 @@ def generate_ultimate_epub(title, desc, cover_url, chapters_data, output_filenam
         spine_items.append(desc_item)
 
     toc_links = []
-    indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
-    scraped_results = []
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        results = executor.map(process_single_chapter, indexed_chapters)
-        for res in results:
-            scraped_results.append(res)
-            
-    for idx, ch_title, ch_html, _ in scraped_results:
-        if len(ch_html) < 20: continue
-            
+    for idx, ch_title, ch_html, _ in valid_chapters:
         file_name = f'chap_{idx:03d}.xhtml'
         c = epub.EpubHtml(title=ch_title, file_name=file_name, lang='ar')
         c.content = f'<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">\n<head><title>{ch_title}</title></head>\n<body><div dir="rtl"><h2>{ch_title}</h2>{ch_html}</div></body>\n</html>'
@@ -277,10 +288,12 @@ def generate_pdf(title, desc, chapters_data, output_filename):
     c.setFont("Helvetica", 11)
     
     indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
+    valid_found = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         results = executor.map(process_single_chapter, indexed_chapters)
         for _, ch_title, _, ch_text in results:
             if len(ch_text) < 20: continue
+            valid_found = True
             if y < 100:
                 c.showPage()
                 y = height - 50
@@ -296,9 +309,13 @@ def generate_pdf(title, desc, chapters_data, output_filename):
                     c.drawString(50, y, line[:90])
                     y -= 15
             y -= 20
+            
+    if not valid_found:
+        raise Exception("No readable text found. The site might be protected.")
     c.save()
 
 def generate_txt(title, desc, chapters_data, output_filename):
+    valid_found = False
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(f"Title: {title}\n\n")
         if desc:
@@ -310,9 +327,14 @@ def generate_txt(title, desc, chapters_data, output_filename):
             results = executor.map(process_single_chapter, indexed_chapters)
             for idx, ch_title, _, ch_text in results:
                 if len(ch_text) > 20:
+                    valid_found = True
                     f.write(f"\n\n--- {ch_title} ---\n\n")
                     f.write(ch_text)
                     f.write("\n\n")
+                    
+    if not valid_found:
+        os.remove(output_filename)
+        raise Exception("No readable text found. The site might be protected.")
 
 def generate_html_archive(title, desc, chapters_data, output_filename):
     html_content = f"""<!DOCTYPE html>
@@ -327,12 +349,18 @@ def generate_html_archive(title, desc, chapters_data, output_filename):
         html_content += f"<div class='chapter'><h2>Description</h2><p>{desc}</p></div>"
         
     indexed_chapters = [(i, ch_title, ch_url) for i, (ch_title, ch_url) in enumerate(chapters_data, start=1)]
+    valid_found = False
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         results = executor.map(process_single_chapter, indexed_chapters)
         for idx, ch_title, ch_html, _ in results:
             if len(ch_html) > 20:
+                valid_found = True
                 html_content += f"<div class='chapter'><h2>{ch_title}</h2>{ch_html}</div>"
                 
+    if not valid_found:
+        raise Exception("No readable text found. The site might be protected.")
+        
     html_content += "</body></html>"
     with open(output_filename, 'w', encoding='utf-8') as f:
         f.write(html_content)
@@ -373,7 +401,7 @@ def convert_novel():
         return send_file(output_filename, as_attachment=True)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 400
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
