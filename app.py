@@ -70,9 +70,81 @@ def get_chapter_title(soup):
 def scrape_novel_from_url(url):
     """الدالة الرئيسية المسؤولة عن جلب البيانات من أي موقع"""
     
-    # 1. جلب البيانات الوصفية (العنوان، المؤلف، الغلاف، الوصف)
-    soup = get_soup(url)
-    if not soup: return None, "Error: Cannot access the page"
+    # تنظيف الرابط من أي إضافات (مثل utm_source أو wp_page)
+    clean_url = url.split('?')[0].strip()
+    
+    # ---------------------------------------------------------
+    # دعم خاص لموقع واتباد (Wattpad) باستخدام الـ API الرسمي
+    # ---------------------------------------------------------
+    if "wattpad.com" in clean_url:
+        import re
+        match = re.search(r'/story/(\d+)', clean_url)
+        if not match:
+            return None, "Invalid Wattpad URL"
+            
+        story_id = match.group(1)
+        api_url = f"https://www.wattpad.com/api/v3/stories/{story_id}"
+        
+        try:
+            response = requests.get(api_url, headers=HEADERS)
+            if response.status_code != 200:
+                return None, "Cannot fetch Wattpad data"
+                
+            data = response.json()
+            title = data.get('title', 'Unknown')
+            author = data.get('user', {}).get('name', 'Unknown')
+            description = data.get('description', '')
+            cover_url = data.get('cover', '')
+            num_chapters = int(data.get('numParts', 0))
+            
+            # جلب كل فصل عبر الـ API
+            all_chapters_html = []
+            for part in range(1, num_chapters + 1):
+                # ملاحظة: إذا كانت الرواية طويلة جداً، يمكنك فك التعليق عن السطر التالي لتحديد عدد الفصول
+                # if part > 50: break 
+                
+                part_api_url = f"https://www.wattpad.com/api/v3/stories/{story_id}/parts/{part}"
+                part_res = requests.get(part_api_url, headers=HEADERS)
+                if part_res.status_code == 200:
+                    part_data = part_res.json()
+                    part_title = part_data.get('title', f'Chapter {part}')
+                    # نص الفصل يأتي كـ HTML
+                    part_html = part_data.get('text', '')
+                    
+                    # تحويل الصور داخل الفصل إلى Base64
+                    soup_part = BeautifulSoup(part_html, 'html.parser')
+                    for img in soup_part.find_all('img'):
+                        src = img.get('src')
+                        if src:
+                            base64_img = download_image_as_base64(src)
+                            if base64_img:
+                                img['src'] = base64_img
+                    
+                    all_chapters_html.append({
+                        'title': part_title,
+                        'html': str(soup_part)
+                    })
+            
+            if not all_chapters_html:
+                return None, "No chapters found"
+                
+            book_data = {
+                'title': title,
+                'author': author,
+                'description': description,
+                'cover_url': cover_url,
+                'chapters': all_chapters_html
+            }
+            return book_data, None
+            
+        except Exception as e:
+            return None, f"Wattpad API Error: {str(e)}"
+
+    # ---------------------------------------------------------
+    # المنطق العام للمواقع الأخرى (Novlar, Uranus, إلخ)
+    # ---------------------------------------------------------
+    soup = get_soup(clean_url)
+    if not soup: return None, "Cannot access page"
 
     title = soup.find('h1').get_text(strip=True) if soup.find('h1') else "Unknown"
     author = "Unknown"
@@ -88,7 +160,7 @@ def scrape_novel_from_url(url):
     if cover_tag:
         cover_url = cover_tag.get('content') if cover_tag.name == 'meta' else cover_tag.get('src')
 
-    # 2. استخراج روابط الفصول
+    # استخراج روابط الفصول (محاولة عامة)
     chapter_links = []
     for a in soup.find_all('a', href=True):
         href = a['href'].lower()
@@ -96,19 +168,17 @@ def scrape_novel_from_url(url):
             chapter_links.append(a['href'])
     
     chapter_links = list(dict.fromkeys(chapter_links))
-    if not chapter_links: return None, "Error: No chapters found"
+    if not chapter_links: return None, "No chapters found"
 
-    # 3. جلب محتوى كل فصل مع الصور
     all_chapters_html = []
     for link in chapter_links:
-        full_url = link if link.startswith('http') else f"{url.split('/')[0]}//{url.split('/')[2]}{link}"
+        full_url = link if link.startswith('http') else f"{clean_url.split('/')[0]}//{clean_url.split('/')[2]}{link}"
         chap_soup = get_soup(full_url)
         if chap_soup:
             chap_html = extract_content_with_images(chap_soup)
             chap_title = get_chapter_title(chap_soup)
             all_chapters_html.append({'title': chap_title, 'html': chap_html})
 
-    # 4. تجهيز البيانات للتحويل
     book_data = {
         'title': title,
         'author': author,
@@ -195,7 +265,7 @@ def convert_to_html(book_data, output_filename):
     return output_filename
 
 def convert_to_azw3(book_data, output_filename):
-    # بناء ملف EPUB ثم تسميته AZW3 (أفضل طريقة لأجهزة Kindle)
+    # بناء ملف EPUB ثم تسميته AZW3
     return convert_to_epub(book_data, output_filename)
 
 # ==========================================
