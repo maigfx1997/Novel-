@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, send_file, jsonify
 
 # مكتبات بناء الكتب
 from ebooklib import epub
+import ebooklib
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
