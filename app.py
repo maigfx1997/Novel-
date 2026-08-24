@@ -78,8 +78,7 @@ def scrape_novel_from_url(url):
     # دعم خاص لموقع واتباد (Wattpad)
     # ---------------------------------------------------------
     if "wattpad.com" in clean_url:
-        import re
-        
+        match = re.search(r'/story/(\d+)', clean_url)
         if not match:
             return None, "Invalid Wattpad URL"
             
@@ -138,6 +137,10 @@ def scrape_novel_from_url(url):
             description = data.get('description', '')
             cover_url = data.get('cover', '')
             num_chapters = int(data.get('numParts', 0))
+            
+            # ⚠️ حد أقصى 30 فصل حتى لا ينقطع الاتصال بسبب الوقت
+            if num_chapters > 30:
+                num_chapters = 30
             
             all_chapters_html = []
             for part in range(1, num_chapters + 1):
