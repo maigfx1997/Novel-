@@ -1,5 +1,7 @@
 import os
 import re
+import threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -8,6 +10,16 @@ from app import scrape_novel_from_url, convert_to_epub, convert_to_pdf, convert_
 
 # ضع التوكن هنا
 TOKEN = "8261617329:AAEjhQHSBopSCDKx6nPRChGqC-ykMVnvc0"
+
+# إنشاء خادم ويب مصغر فقط للاستماع للمنفذ
+health_app = Flask(__name__)
+
+@health_app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_health_server():
+    health_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """أمر البداية"""
@@ -55,14 +67,12 @@ async def convert_novel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_message.edit_text(f"❌ خطأ غير متوقع: {str(e)}")
 
 if __name__ == '__main__':
-    # إنشاء التطبيق
+    # تشغيل خادم الصحة في الخلفية (ليعطي Render المنفذ المطلوب)
+    threading.Thread(target=run_health_server, daemon=True).start()
+    
+    # تشغيل البوت
     application = ApplicationBuilder().token(TOKEN).build()
-    
-    # إضافة الأوامر
     application.add_handler(CommandHandler('start', start))
-    
-    # استقبال أي رسالة نصية (رابط) وتحويلها
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, convert_novel))
-    
     print("🤖 البوت يعمل الآن...")
     application.run_polling()
