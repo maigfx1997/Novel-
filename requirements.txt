@@ -5,3 +5,4 @@ lxml
 EbookLib
 reportlab
 gunicorn
+python-telegram-bot
