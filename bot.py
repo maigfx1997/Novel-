@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from app import scrape_novel_from_url, convert_to_epub, convert_to_pdf, convert_to_txt, convert_to_azw3, convert_to_html
 
 # ⚠️ ضع التوكن الجديد هنا (الذي ستحصل عليه بعد الضغط على Revoke)
-TOKEN = "8261617329:AAEjhQHSBopSCDKx6nPRChGqC-ykMVnvc0"
+TOKEN = "8261617329:AAFPC9dI8ofxIl8FQjXYTUq1ckBjL0wBbQ0"
 
 # إنشاء خادم ويب مصغر فقط للاستماع للمنفذ
 health_app = Flask(__name__)
