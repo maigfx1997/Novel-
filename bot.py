@@ -8,7 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 # استيراد الدوال الموجودة في app.py
 from app import scrape_novel_from_url, convert_to_epub, convert_to_pdf, convert_to_txt, convert_to_azw3, convert_to_html
 
-# ضع التوكن هنا
+# ⚠️ ضع التوكن الجديد هنا (الذي ستحصل عليه بعد الضغط على Revoke)
 TOKEN = "8261617329:AAEjhQHSBopSCDKx6nPRChGqC-ykMVnvc0"
 
 # إنشاء خادم ويب مصغر فقط للاستماع للمنفذ
